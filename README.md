@@ -1,6 +1,6 @@
 # Boggle Word Finder — GitHub Pages Edition
 
-Visible build: **v6.1 · 5×5 GRID FIX**
+Visible build: **v6.2 · ADAPTIVE LETTER OCR**
 
 This folder is already built as a static website. No npm installation or build command is required.
 
@@ -19,6 +19,6 @@ The camera scanner requires HTTPS, which GitHub Pages provides automatically.
 
 This release follows the working PPAI live inventory scanner's real camera path: it opens the camera immediately and analyzes Canvas frames continuously without waiting for OpenCV.
 
-Version 6.1 detects the repeating 4×4 or 5×5 tile pattern before reading letters. It also includes camera-distance game-font samples, corrected DL/DW/TL/TW color mappings, and a thumbnail of every actual tile crop on the review screen.
+Version 6.2 detects the repeating 4×4 or 5×5 tile pattern and adjusts its letter-darkness threshold for every individual tile. It includes real camera-distance samples, corrected DL/DW/TL/TW color mappings, and a thumbnail of every actual tile crop on the review screen.
 
 Hold the board steady until the live tiles stabilize, then select **Use live reading**.
