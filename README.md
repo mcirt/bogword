@@ -1,6 +1,6 @@
 # Boggle Word Finder — GitHub Pages Edition
 
-Visible build: **v5.0 · PPAI CANVAS LIVE**
+Visible build: **v6.0 · GAME-FONT OCR**
 
 This folder is already built as a static website. No npm installation or build command is required.
 
@@ -18,5 +18,7 @@ Do not upload only the ZIP. Extract it first and upload everything inside it.
 The camera scanner requires HTTPS, which GitHub Pages provides automatically.
 
 This release follows the working PPAI live inventory scanner's real camera path: it opens the camera immediately and analyzes Canvas frames continuously without waiting for OpenCV.
+
+Version 6 adds automatic dark-grid detection, edge-to-edge tile crops, real game-font templates for A–Z/Qu, and corrected DL/DW/TL/TW color mappings.
 
 Hold the board steady until the live tiles stabilize, then select **Use live reading**.
