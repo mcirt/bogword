@@ -4,7 +4,7 @@ import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { GAME_GLYPH_TEMPLATES } from "./game-letter-templates";
 
 export type ScanBonus = "NONE" | "DL" | "DW" | "TL" | "TW";
-type ScanCell = { letter: string; bonus: ScanBonus; confidence: number };
+type ScanCell = { letter: string; bonus: ScanBonus; confidence: number; preview?: string };
 
 declare global {
   interface Window {
@@ -34,7 +34,37 @@ function centerSquare(canvas: HTMLCanvasElement) {
   return { x: Math.round((canvas.width-side)/2), y: Math.round((canvas.height-side)/2), width: side, height: side };
 }
 
-function locateGameBoard(canvas:HTMLCanvasElement){
+function locateTileGrid(canvas:HTMLCanvasElement,size:number){
+  const width=360,height=Math.max(1,Math.round(canvas.height*width/canvas.width)),probe=document.createElement("canvas");probe.width=width;probe.height=height;
+  const ctx=probe.getContext("2d",{willReadFrequently:true})!;ctx.drawImage(canvas,0,0,width,height);const pixels=ctx.getImageData(0,0,width,height).data;
+  let best:null|{score:number;matches:number;left:number;top:number;pitch:number}=null;
+  for(const threshold of [145,160,175,190]){
+    const mask=new Uint8Array(width*height),seen=new Uint8Array(width*height);
+    for(let i=0;i<mask.length;i++){const p=i*4,lum=pixels[p]*.299+pixels[p+1]*.587+pixels[p+2]*.114;if(lum>threshold)mask[i]=1;}
+    const candidates:Array<{x:number;y:number;width:number;height:number}> = [];
+    for(let start=0;start<mask.length;start++){
+      if(!mask[start]||seen[start])continue;const stack=[start];seen[start]=1;let x0=start%width,x1=x0,y0=Math.floor(start/width),y1=y0,count=0;
+      while(stack.length){const point=stack.pop()!,y=Math.floor(point/width),x=point-y*width;count++;x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);for(const next of [point-1,point+1,point-width,point+width]){if(next<0||next>=mask.length||seen[next]||!mask[next])continue;const ny=Math.floor(next/width),nx=next-ny*width;if(Math.abs(nx-x)+Math.abs(ny-y)!==1)continue;seen[next]=1;stack.push(next);}}
+      const w=x1-x0+1,h=y1-y0+1,ratio=w/Math.max(1,h),fill=count/(w*h);if(count>40&&w>7&&h>7&&w<width*.22&&h<width*.22&&ratio>.62&&ratio<1.6&&fill>.32)candidates.push({x:x0+w/2,y:y0+h/2,width:w,height:h});
+    }
+    if(candidates.length<size*2)continue;
+    const dimensions=candidates.map(c=>(c.width+c.height)/2).sort((a,b)=>a-b),median=dimensions[Math.floor(dimensions.length/2)],distances:number[]=[];
+    for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const a=candidates[i],b=candidates[j],dx=Math.abs(a.x-b.x),dy=Math.abs(a.y-b.y);if(dy<median*.45&&dx>median*.8&&dx<median*1.7)distances.push(dx);if(dx<median*.45&&dy>median*.8&&dy<median*1.7)distances.push(dy);}
+    if(!distances.length)continue;distances.sort((a,b)=>a-b);const pitch=distances[Math.floor(distances.length/2)];
+    for(const anchor of candidates)for(let row=0;row<size;row++)for(let col=0;col<size;col++){
+      const left=anchor.x-(col+.5)*pitch,top=anchor.y-(row+.5)*pitch;let matches=0,error=0;
+      for(let r=0;r<size;r++)for(let c=0;c<size;c++){const ex=left+(c+.5)*pitch,ey=top+(r+.5)*pitch;let nearest=Infinity;for(const candidate of candidates)nearest=Math.min(nearest,Math.hypot(candidate.x-ex,candidate.y-ey));if(nearest<pitch*.3){matches++;error+=nearest;}}
+      const score=matches*100-error-Math.abs(left+size*pitch/2-width/2)*.01;if(!best||score>best.score)best={score,matches,left,top,pitch};
+    }
+  }
+  if(!best||best.matches<size*size*.42)return null;
+  const scaleX=canvas.width/width,scaleY=canvas.height/height;
+  return{x:Math.max(0,Math.round(best.left*scaleX)),y:Math.max(0,Math.round(best.top*scaleY)),width:Math.min(canvas.width,Math.round(size*best.pitch*scaleX)),height:Math.min(canvas.height,Math.round(size*best.pitch*scaleY))};
+}
+
+function locateGameBoard(canvas:HTMLCanvasElement,size:number){
+  const tileGrid=locateTileGrid(canvas,size);
+  if(tileGrid)return tileGrid;
   const width=300,height=Math.max(1,Math.round(canvas.height*width/canvas.width)),probe=document.createElement("canvas");probe.width=width;probe.height=height;
   const ctx=probe.getContext("2d",{willReadFrequently:true})!;ctx.drawImage(canvas,0,0,width,height);const pixels=ctx.getImageData(0,0,width,height).data,mask=new Uint8Array(width*height),dilated=new Uint8Array(width*height);
   for(let i=0;i<mask.length;i++){const p=i*4,lum=pixels[p]*.299+pixels[p+1]*.587+pixels[p+2]*.114;if(lum<105)mask[i]=1;}
@@ -136,8 +166,8 @@ function analyzeBoard(source:HTMLCanvasElement,size:number,cv:any){
 }
 
 function analyzeLiveBoard(source:HTMLCanvasElement,size:number){
-  const board=cropBoard(source,locateGameBoard(source)),rects=fixedTileRects(board,size),cells:ScanCell[]=[];
-  for(const r of rects){const tile=document.createElement("canvas");tile.width=120;tile.height=120;tile.getContext("2d",{alpha:false})!.drawImage(board,r.x,r.y,r.width,r.height,0,0,120,120);const guess=recognizeLetter(tile);cells.push({...guess,bonus:detectBonus(tile)});}
+  const board=cropBoard(source,locateGameBoard(source,size)),rects=fixedTileRects(board,size),cells:ScanCell[]=[];
+  for(const r of rects){const tile=document.createElement("canvas");tile.width=120;tile.height=120;tile.getContext("2d",{alpha:false})!.drawImage(board,r.x,r.y,r.width,r.height,0,0,120,120);const guess=recognizeLetter(tile);cells.push({...guess,bonus:detectBonus(tile),preview:tile.toDataURL("image/jpeg",.72)});}
   return {board,cells};
 }
 
@@ -183,7 +213,7 @@ export default function BoardScanner({size,onApply}:{size:number;onApply:(letter
       {stage==="camera"&&<><div className="camera-wrap"><video ref={videoRef} playsInline muted/><div className="camera-guide" style={{gridTemplateColumns:`repeat(${size},1fr)`}}>{Array.from({length:size*size},(_,i)=><i key={i}/>)}</div></div>{cells.length===size*size&&<div className="live-reading"><strong>LIVE READING</strong><div className="live-reading-grid" style={{gridTemplateColumns:`repeat(${size},1fr)`}}>{cells.map((cell,index)=><span className={cell.confidence>=.9?"stable":"checking"} key={index}><b>{cell.letter}</b><small>{cell.bonus}</small></span>)}</div></div>}<div className="scanner-actions"><button className="capture-button" onClick={freezeLiveReading} disabled={cells.length!==size*size}>Use live reading</button><button onClick={()=>fileRef.current?.click()}>Choose photo</button></div></>}
       {stage==="working"&&<div className="scanner-working"><i/><strong>Reading the board…</strong><p>Locating every tile and bonus square.</p></div>}
       <canvas ref={canvasRef} className={stage==="review"?"scanner-preview":"scanner-canvas-hidden"}/>
-      {stage==="review"&&<><div className="scan-review" style={{gridTemplateColumns:`repeat(${size},1fr)`}}>{cells.map((cell,index)=><div className={cell.confidence<.68?"scan-cell uncertain":"scan-cell"} key={index}><label><span>Tile {index+1}</span><input value={cell.letter} maxLength={1} onChange={e=>updateCell(index,{letter:e.target.value.replace(/[^a-z]/gi,"").slice(-1).toUpperCase(),confidence:1})}/></label><select value={cell.bonus} onChange={e=>updateCell(index,{bonus:e.target.value as ScanBonus})} aria-label={`Bonus for tile ${index+1}`}><option>NONE</option><option>DL</option><option>DW</option><option>TL</option><option>TW</option></select></div>)}</div><div className="scanner-actions"><button className="apply-scan" onClick={apply}>Apply board</button><button onClick={startCamera}>Retake</button></div></>}
+      {stage==="review"&&<><div className="scan-review" style={{gridTemplateColumns:`repeat(${size},1fr)`}}>{cells.map((cell,index)=><div className={cell.confidence<.68?"scan-cell uncertain":"scan-cell"} key={index}>{cell.preview&&<img src={cell.preview} alt=""/>}<label><span>Tile {index+1}</span><input value={cell.letter} maxLength={1} onChange={e=>updateCell(index,{letter:e.target.value.replace(/[^a-z]/gi,"").slice(-1).toUpperCase(),confidence:1})}/></label><select value={cell.bonus} onChange={e=>updateCell(index,{bonus:e.target.value as ScanBonus})} aria-label={`Bonus for tile ${index+1}`}><option>NONE</option><option>DL</option><option>DW</option><option>TL</option><option>TW</option></select></div>)}</div><div className="scanner-actions"><button className="apply-scan" onClick={apply}>Apply board</button><button onClick={startCamera}>Retake</button></div></>}
       <p className="scanner-status" role="status">{status}</p>
     </div></div>}
   </>;
