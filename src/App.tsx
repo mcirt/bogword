@@ -11,7 +11,7 @@ const POINTS: Record<string, number> = { A:1,B:4,C:4,D:2,E:1,F:4,G:3,H:3,I:1,J:1
 const DICE = ["AAEEGN","ABBJOO","ACHOPS","AFFKPS","AOOTTW","CIMOTU","DEILRX","DELRVY","DISTTY","EEGHNW","EEINSU","EHRTVW","EIOSST","ELRTTY","HIMNQU","HLNNRZ","AEANEG","AHSPCO","ASPFFK","OBJOAB","IOTMUC","RYVDEL","LREIXD","WNEGEH","LNHNRZ"];
 const SAMPLE = "S T A R E L I N P O G D B E S T".split(" ");
 const BONUS_OPTIONS: Bonus[] = ["NONE", "DL", "DW", "TL", "TW"];
-const BUILD_VERSION = "v6.1 · 5×5 GRID FIX";
+const BUILD_VERSION = "v6.2 · ADAPTIVE LETTER OCR";
 
 function nearby(index: number, size: number) {
   const row = Math.floor(index / size), col = index % size, result: number[] = [];

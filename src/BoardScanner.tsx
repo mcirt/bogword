@@ -124,8 +124,11 @@ function tileRects(board:HTMLCanvasElement,size:number,cv:any){
 
 function glyphBitmap(canvas:HTMLCanvasElement){
   const ctx=canvas.getContext("2d",{willReadFrequently:true})!,w=canvas.width,h=canvas.height,data=ctx.getImageData(0,0,w,h).data;
-  const pixels:Array<[number,number]>=[];const x0=Math.round(w*.08),x1=Math.round(w*.92),y0=Math.round(h*.18),y1=Math.round(h*.8);
-  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const p=(y*w+x)*4,lum=data[p]*.299+data[p+1]*.587+data[p+2]*.114;if(lum<80)pixels.push([x,y]);}
+  const pixels:Array<[number,number]>=[],samples:Array<[number,number,number]>=[],histogram=new Uint32Array(256);const x0=Math.round(w*.08),x1=Math.round(w*.92),y0=Math.round(h*.18),y1=Math.round(h*.8);
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const p=(y*w+x)*4,lum=Math.max(0,Math.min(255,Math.round(data[p]*.299+data[p+1]*.587+data[p+2]*.114)));samples.push([x,y,lum]);histogram[lum]++;}
+  const total=samples.length,sum=histogram.reduce((value,count,index)=>value+count*index,0);let backgroundWeight=0,backgroundSum=0,bestVariance=-1,threshold=80;
+  for(let level=0;level<256;level++){backgroundWeight+=histogram[level];if(!backgroundWeight)continue;const foregroundWeight=total-backgroundWeight;if(!foregroundWeight)break;backgroundSum+=level*histogram[level];const backgroundMean=backgroundSum/backgroundWeight,foregroundMean=(sum-backgroundSum)/foregroundWeight,variance=backgroundWeight*foregroundWeight*(backgroundMean-foregroundMean)**2;if(variance>bestVariance){bestVariance=variance;threshold=level;}}
+  threshold=Math.max(90,Math.min(160,threshold));for(const [x,y,lum] of samples)if(lum<threshold)pixels.push([x,y]);
   if(pixels.length<8)return new Uint8Array(32*32);
   let minX=w,maxX=0,minY=h,maxY=0;for(const [x,y] of pixels){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
   const bw=maxX-minX+1,bh=maxY-minY+1,scale=Math.min(26/bw,26/bh),ox=(32-bw*scale)/2,oy=(32-bh*scale)/2,out=new Uint8Array(1024);
