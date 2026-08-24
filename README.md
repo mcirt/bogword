@@ -1,6 +1,6 @@
 # Boggle Word Finder — GitHub Pages Edition
 
-Visible build: **v4.0 · PPAI LIVE**
+Visible build: **v4.1 · PPAI BOTTOM-LOAD**
 
 This folder is already built as a static website. No npm installation or build command is required.
 
@@ -19,9 +19,10 @@ The camera scanner requires HTTPS, which GitHub Pages provides automatically.
 
 This release uses the same OpenCV build and startup sequence as PPAI:
 
-1. `opencv.js` loads first.
-2. `opencv-loader.js` registers the PPAI runtime callback.
-3. The scanner waits for `window.ppaiCvReady` before processing a board.
+1. The solver interface loads first.
+2. `opencv.js` loads at the bottom of the page, matching PPAI's placement.
+3. `opencv-loader.js` registers the PPAI runtime callback.
+4. The scanner waits for `window.ppaiCvReady` before processing a board.
 
 Do not rename or omit `opencv.js` or `opencv-loader.js` when uploading the project.
 
