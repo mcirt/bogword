@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import { GAME_GLYPH_TEMPLATES } from "./game-letter-templates";
+import { GAME_GLYPH_TEMPLATES, LEGACY_GLYPH_TEMPLATES } from "./game-letter-templates";
 
 export type ScanBonus = "NONE" | "DL" | "DW" | "TL" | "TW";
 type ScanCell = { letter: string; bonus: ScanBonus; confidence: number; preview?: string };
@@ -122,13 +122,13 @@ function tileRects(board:HTMLCanvasElement,size:number,cv:any){
   }catch{return fixed();}finally{if(hierarchy)hierarchy.delete();if(contours)contours.delete();if(edges)edges.delete();if(gray)gray.delete();if(src)src.delete();}
 }
 
-function glyphBitmap(canvas:HTMLCanvasElement){
+function glyphBitmap(canvas:HTMLCanvasElement,mode:"adaptive"|"legacy"="adaptive"){
   const ctx=canvas.getContext("2d",{willReadFrequently:true})!,w=canvas.width,h=canvas.height,data=ctx.getImageData(0,0,w,h).data;
   const pixels:Array<[number,number]>=[],samples:Array<[number,number,number]>=[],histogram=new Uint32Array(256);const x0=Math.round(w*.08),x1=Math.round(w*.92),y0=Math.round(h*.18),y1=Math.round(h*.8);
   for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const p=(y*w+x)*4,lum=Math.max(0,Math.min(255,Math.round(data[p]*.299+data[p+1]*.587+data[p+2]*.114)));samples.push([x,y,lum]);histogram[lum]++;}
   const total=samples.length,sum=histogram.reduce((value,count,index)=>value+count*index,0);let backgroundWeight=0,backgroundSum=0,bestVariance=-1,threshold=80;
   for(let level=0;level<256;level++){backgroundWeight+=histogram[level];if(!backgroundWeight)continue;const foregroundWeight=total-backgroundWeight;if(!foregroundWeight)break;backgroundSum+=level*histogram[level];const backgroundMean=backgroundSum/backgroundWeight,foregroundMean=(sum-backgroundSum)/foregroundWeight,variance=backgroundWeight*foregroundWeight*(backgroundMean-foregroundMean)**2;if(variance>bestVariance){bestVariance=variance;threshold=level;}}
-  threshold=Math.max(90,Math.min(160,threshold));for(const [x,y,lum] of samples)if(lum<threshold)pixels.push([x,y]);
+  threshold=mode==="legacy"?80:Math.max(90,Math.min(160,threshold));for(const [x,y,lum] of samples)if(lum<threshold)pixels.push([x,y]);
   if(pixels.length<8)return new Uint8Array(32*32);
   let minX=w,maxX=0,minY=h,maxY=0;for(const [x,y] of pixels){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
   const bw=maxX-minX+1,bh=maxY-minY+1,scale=Math.min(26/bw,26/bh),ox=(32-bw*scale)/2,oy=(32-bh*scale)/2,out=new Uint8Array(1024);
@@ -136,20 +136,20 @@ function glyphBitmap(canvas:HTMLCanvasElement){
   return out;
 }
 
-let templates:Record<string,Uint8Array[]>|null=null;
+const templateCache:Partial<Record<"adaptive"|"legacy",Record<string,Uint8Array[]>>>={};
 function unpackTemplate(encoded:string){const packed=atob(encoded),result=new Uint8Array(1024);for(let i=0;i<1024;i++)if(packed.charCodeAt(Math.floor(i/8))&(1<<(i%8)))result[i]=1;return result;}
-function letterTemplates(){
-  if(templates)return templates;templates={};
+function letterTemplates(mode:"adaptive"|"legacy"){
+  if(templateCache[mode])return templateCache[mode]!;const templates:Record<string,Uint8Array[]>={},source=mode==="legacy"?LEGACY_GLYPH_TEMPLATES:GAME_GLYPH_TEMPLATES;
   for(const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ"){
-    templates[letter]=(GAME_GLYPH_TEMPLATES[letter]||[]).map(unpackTemplate);
-    for(const font of ["Arial Black","Arial","Helvetica"]){const c=document.createElement("canvas");c.width=96;c.height=96;const x=c.getContext("2d")!;x.fillStyle="#fff";x.fillRect(0,0,96,96);x.fillStyle="#000";x.font=`900 72px ${font}`;x.textAlign="center";x.textBaseline="middle";x.fillText(letter,48,51);templates[letter].push(glyphBitmap(c));}
+    templates[letter]=(source[letter]||[]).map(unpackTemplate);
+    for(const font of ["Arial Black","Arial","Helvetica"]){const c=document.createElement("canvas");c.width=96;c.height=96;const x=c.getContext("2d")!;x.fillStyle="#fff";x.fillRect(0,0,96,96);x.fillStyle="#000";x.font=`900 72px ${font}`;x.textAlign="center";x.textBaseline="middle";x.fillText(letter,48,51);templates[letter].push(glyphBitmap(c,mode));}
   }
-  return templates;
+  templateCache[mode]=templates;return templates;
 }
 
 function bitmapDistance(a:Uint8Array,b:Uint8Array){let mismatch=0,union=0;for(let i=0;i<a.length;i++){if(a[i]||b[i])union++;if(a[i]!==b[i])mismatch++;}return union?mismatch/union:1;}
-function recognizeLetter(tile:HTMLCanvasElement){
-  const sample=glyphBitmap(tile),all=letterTemplates(),ranked=Object.entries(all).map(([letter,variants])=>({letter,score:Math.min(...variants.map(v=>bitmapDistance(sample,v)))})).sort((a,b)=>a.score-b.score);
+function recognizeLetter(tile:HTMLCanvasElement,bonus:ScanBonus){
+  const mode=bonus==="NONE"?"adaptive":"legacy",sample=glyphBitmap(tile,mode),all=letterTemplates(mode),ranked=Object.entries(all).map(([letter,variants])=>({letter,score:Math.min(...variants.map(v=>bitmapDistance(sample,v)))})).sort((a,b)=>a.score-b.score);
   const best=ranked[0],second=ranked[1],confidence=Math.max(.05,Math.min(.99,.55+(second.score-best.score)*1.9+(1-best.score)*.25));
   return {letter:best.letter,confidence};
 }
@@ -164,13 +164,13 @@ function detectBonus(tile:HTMLCanvasElement):ScanBonus{
 
 function analyzeBoard(source:HTMLCanvasElement,size:number,cv:any){
   const rect=detectBoard(source,cv),board=cropBoard(source,rect),rects=tileRects(board,size,cv),cells:ScanCell[]=[];
-  for(const r of rects){const tile=document.createElement("canvas");tile.width=120;tile.height=120;tile.getContext("2d",{alpha:false})!.drawImage(board,r.x,r.y,r.width,r.height,0,0,120,120);const guess=recognizeLetter(tile);cells.push({...guess,bonus:detectBonus(tile)});}
+  for(const r of rects){const tile=document.createElement("canvas");tile.width=120;tile.height=120;tile.getContext("2d",{alpha:false})!.drawImage(board,r.x,r.y,r.width,r.height,0,0,120,120);const bonus=detectBonus(tile),guess=recognizeLetter(tile,bonus);cells.push({...guess,bonus});}
   return {board,cells};
 }
 
 function analyzeLiveBoard(source:HTMLCanvasElement,size:number){
   const board=cropBoard(source,locateGameBoard(source,size)),rects=fixedTileRects(board,size),cells:ScanCell[]=[];
-  for(const r of rects){const tile=document.createElement("canvas");tile.width=120;tile.height=120;tile.getContext("2d",{alpha:false})!.drawImage(board,r.x,r.y,r.width,r.height,0,0,120,120);const guess=recognizeLetter(tile);cells.push({...guess,bonus:detectBonus(tile),preview:tile.toDataURL("image/jpeg",.72)});}
+  for(const r of rects){const tile=document.createElement("canvas");tile.width=120;tile.height=120;tile.getContext("2d",{alpha:false})!.drawImage(board,r.x,r.y,r.width,r.height,0,0,120,120);const bonus=detectBonus(tile),guess=recognizeLetter(tile,bonus);cells.push({...guess,bonus,preview:tile.toDataURL("image/jpeg",.72)});}
   return {board,cells};
 }
 
