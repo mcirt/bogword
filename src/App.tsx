@@ -11,7 +11,7 @@ const POINTS: Record<string, number> = { A:1,B:4,C:4,D:2,E:1,F:4,G:3,H:3,I:1,J:1
 const DICE = ["AAEEGN","ABBJOO","ACHOPS","AFFKPS","AOOTTW","CIMOTU","DEILRX","DELRVY","DISTTY","EEGHNW","EEINSU","EHRTVW","EIOSST","ELRTTY","HIMNQU","HLNNRZ","AEANEG","AHSPCO","ASPFFK","OBJOAB","IOTMUC","RYVDEL","LREIXD","WNEGEH","LNHNRZ"];
 const SAMPLE = "S T A R E L I N P O G D B E S T".split(" ");
 const BONUS_OPTIONS: Bonus[] = ["NONE", "DL", "DW", "TL", "TW"];
-const BUILD_VERSION = "v6.3 · BONUS LETTER FIX";
+const BUILD_VERSION = "v7.0 · PLAY MODE";
 
 function nearby(index: number, size: number) {
   const row = Math.floor(index / size), col = index % size, result: number[] = [];
@@ -84,6 +84,12 @@ export default function Home() {
   function loadSample(){setSize(4);setBoard(SAMPLE);setBonuses(Array(16).fill("NONE"));selectTile(0);setResults([]);setSelected(null);setMessage("Sample board loaded. Press Solve.");}
   function shuffleBoard(){const dice=DICE.slice(0,size*size).sort(()=>Math.random()-.5);setBoard(dice.map(die=>die[Math.floor(Math.random()*die.length)]));setBonuses(Array(size*size).fill("NONE"));selectTile(0);setResults([]);setSelected(null);setMessage("New board shuffled. Press Solve.");}
   function applyScan(letters:string[],scannedBonuses:ScanBonus[]){setBoard(letters);setBonuses(scannedBonuses);selectTile(0);setResults([]);setSelected(null);setQuery("");setMessage(`Scanned ${size} × ${size} board applied. Review it, then press Solve.`);}
+  function playBoard(){
+    if(!board.every(Boolean)){const missing=board.findIndex(letter=>!letter);setMessage("Fill every tile before opening play mode.");inputs.current[missing]?.focus();return;}
+    localStorage.setItem("boggle-play-board",JSON.stringify({size,board,bonuses,savedAt:Date.now()}));
+    const playWindow=window.open("./game.html","_blank");
+    if(playWindow)playWindow.opener=null;else setMessage("The play window was blocked. Allow pop-ups for this site, then try again.");
+  }
   function solve(){
     if(!dictionary.length)return;
     if(!board.every(Boolean)){const missing=board.findIndex(letter=>!letter);setMessage("Fill every tile before solving.");inputs.current[missing]?.focus();return;}
@@ -104,7 +110,7 @@ export default function Home() {
         <BoardScanner size={size} onApply={applyScan}/>
         <div className="board-wrap"><div className="letter-board" style={{gridTemplateColumns:`repeat(${size},1fr)`}}>{board.map((letter,index)=>{const bonus=bonuses[index];return <label className={`tile ${activeTile===index?"active-tile":""} ${highlighted.has(index)?"highlighted":""} ${bonus!=="NONE"?`bonus-${bonus.toLowerCase()}`:""}`} key={`${size}-${index}`} onPointerDown={()=>selectTile(index)}><span className="sr-only">Tile {index+1}</span><input ref={el=>{inputs.current[index]=el;}} value={letter} onFocus={()=>selectTile(index)} onChange={e=>updateTile(index,e.target.value)} onKeyDown={e=>handleKey(index,e.key)} inputMode="text" autoCapitalize="characters" maxLength={1} aria-label={`Tile ${index+1}${letter?`: ${letter}, ${POINTS[letter]} points`:""}${bonus!=="NONE"?`, ${bonus}`:""}`}/>{letter==="Q"&&<small className="q-u">u</small>}{letter&&<span className="tile-value">{POINTS[letter]}</span>}{bonus!=="NONE"&&<span className="bonus-badge">{bonus}</span>}{highlighted.has(index)&&<b className="path-step">{highlighted.get(index)}</b>}</label>})}</div></div>
         <div className="bonus-toolbar"><div><strong>Bonus square</strong><span>Tile {activeTile+1}{board[activeTile]?` · ${board[activeTile]}`:""}</span></div><div className="bonus-buttons">{BONUS_OPTIONS.map(bonus=><button key={bonus} className={`${bonus===bonuses[activeTile]?"active ":""}bonus-choice bonus-${bonus.toLowerCase()}`} onClick={()=>setTileBonus(bonus)} aria-pressed={bonus===bonuses[activeTile]}>{bonus}</button>)}</div></div>
-        <div className="board-actions"><button className="primary-button" onClick={solve} disabled={solving||!dictionary.length}>{solving?"Finding words…":"Solve board"}<span aria-hidden="true">→</span></button><div className="utility-actions"><button onClick={clearBoard}>Clear</button><button onClick={shuffleBoard}>Shuffle</button><button onClick={loadSample}>Sample</button></div></div>
+        <div className="board-actions"><button className="primary-button" onClick={solve} disabled={solving||!dictionary.length}>{solving?"Finding words…":"Solve board"}<span aria-hidden="true">→</span></button><button className="play-button" onClick={playBoard}>▶ Play entered board</button><div className="utility-actions"><button onClick={clearBoard}>Clear</button><button onClick={shuffleBoard}>Shuffle</button><button onClick={loadSample}>Sample</button></div></div>
         <p className="status" role="status"><span className={dictionary.length?"status-dot ready":"status-dot"}/>{message}</p>
         <details className="points-reference"><summary>Letter point values</summary><div className="points-grid">{Object.entries(POINTS).map(([letter,value])=><span key={letter}><b>{letter==="Q"?"Qu":letter}</b><em>{value}</em></span>)}</div></details>
       </section>
